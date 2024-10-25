@@ -44,6 +44,7 @@ def load_cookies(driver, path):
 cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl']
 cookie_index = 0  # Индекс для текущего файла куки
 
+# Проверка на наличие карты и клик по карте
 def check_for_card(driver, timeout):
     start_time = time.time()  # Замер времени начала поиска карты
     end_time = start_time + timeout
@@ -63,6 +64,11 @@ def check_for_card(driver, timeout):
             time_taken = time.time() - start_time
             print(f"\033[92mCard found! Time taken: {time_taken:.2f} seconds.\033[0m", flush=True)  # Зеленый цвет
             card_found = True
+
+            # Клик по карте через JavaScript
+            driver.execute_script("arguments[0].click();", card_div)
+            print(f"\033[92mCard clicked.\033[0m", flush=True)
+
             break  # Выходим из цикла
 
         except Exception as e:
