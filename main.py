@@ -28,6 +28,11 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 chrome_options.add_argument("--remote-debugging-port=9222")
 chrome_options.add_argument("--window-size=1920,1080")
 chrome_options.add_argument("--autoplay-policy=no-user-gesture-required")
+chrome_options.add_argument("--enable-unsafe-webgl")
+chrome_options.add_argument("--use-gl=swiftshader")
+chrome_options.add_argument("--enable-webgl")
+chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36")
+
 
 # Функция для загрузки куки
 def load_cookies(driver, path):
@@ -85,7 +90,7 @@ while True:
     # Полный перезапуск ChromeDriver
     kill_chrome_driver_processes()
 
-    # Создаем новый экземпляр Service и инициализируем драйвер. Ставим свое расположение драйвера хром 
+    # Создаем новый экземпляр Service и инициализируем драйвер. Ставим свое расположение хромдрайвера
     service = Service(executable_path=r'/usr/local/bin/chromedriver')
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.get("https://animestars.org/aniserials/video/drama/1108-korzinka-fruktov-final.html")
