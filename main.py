@@ -19,20 +19,24 @@ def kill_chrome_driver_processes():
         if proc.info['name'] == 'chromedriver' or 'chrome' in proc.info['name'].lower():
             proc.kill()
 
-# Настройки для headless-режима
+# Настройки для headless-режима (заебали чета менять)
 chrome_options = Options()
-chrome_options.add_argument("--headless")
+chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("--remote-debugging-port=9222")
 chrome_options.add_argument("--window-size=1920,1080")
 chrome_options.add_argument("--autoplay-policy=no-user-gesture-required")
-chrome_options.add_argument("--enable-unsafe-webgl")
-chrome_options.add_argument("--use-gl=swiftshader")
 chrome_options.add_argument("--enable-webgl")
+chrome_options.add_argument("--use-gl=swiftshader")
+chrome_options.add_argument("--enable-webgl2-compute-context")
 chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36")
-
+chrome_options.add_argument("--ignore-gpu-blacklist")
+chrome_options.add_argument("--disable-software-rasterizer")
+chrome_options.add_argument("--disable-web-security")
+chrome_options.add_argument("--allow-running-insecure-content")
+chrome_options.add_argument("--disable-notifications")
+chrome_options.add_argument("--disable-popup-blocking")
 
 # Функция для загрузки куки
 def load_cookies(driver, path):
