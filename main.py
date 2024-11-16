@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -38,6 +38,8 @@ chrome_options.add_argument("--allow-running-insecure-content")
 chrome_options.add_argument("--disable-notifications")
 chrome_options.add_argument("--disable-popup-blocking")
 chrome_options.add_argument("--mute-audio")
+
+chrome_service = ChromeService(port=4053)
 
 def load_cookies(driver, path):
     try:
@@ -110,8 +112,8 @@ def main():
 
         kill_chrome_driver_processes()
 
-        service = Service(executable_path=r'chromedriver-win64\chromedriver.exe')
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        service = ChromeService(executable_path=r'chromedriver-win64\chromedriver.exe')
+        driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
         driver.get("https://animestars.org/aniserials/video/drama/1108-korzinka-fruktov-final.html")
 
         load_cookies(driver, cookie_files[cookie_index])
