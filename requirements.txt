@@ -13,9 +13,7 @@ cfgv==3.4.0
 charset-normalizer==3.3.2
 click==8.1.7
 colorama==0.4.6
-discord.py==2.4.0
 distlib==0.3.8
-EasyProcess==0.2.5
 emoji==2.12.1
 filelock==3.14.0
 Flask==3.0.3
@@ -35,7 +33,6 @@ jaraco.logging==3.3.0
 jaraco.stream==3.0.3
 jaraco.text==3.12.0
 Jinja2==3.1.4
-LOLZTEAM==1.2.9
 magic-filter==1.0.12
 MarkupSafe==2.1.5
 millify==0.1.1
