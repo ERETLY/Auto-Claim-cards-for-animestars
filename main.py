@@ -109,7 +109,7 @@ def main():
 
         kill_chrome_driver_processes()
 
-        service = Service(executable_path=r'C:\Auto-Claim-cards-for-animestars\chromedriver-win64\chromedriver.exe')
+        service = Service(executable_path=r'chromedriver-win64\chromedriver.exe')
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.get("https://animestars.org/aniserials/video/drama/1108-korzinka-fruktov-final.html")
 
