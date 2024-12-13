@@ -2,7 +2,9 @@ import sys
 import pickle
 import io
 import time
+import os
 from datetime import datetime, timedelta
+from threading import Thread
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -17,9 +19,36 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'chromedriver' or 'chrome' in proc.info['name'].lower():
-            proc.kill()
+            try:
+                proc.kill()
+            except psutil.NoSuchProcess:
+                pass
 
-# Настройки для headless-режима
+def restart_at_midnight():
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    while True:
+        current_time = datetime.now(moscow_tz)
+
+        next_restart = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        if next_restart <= current_time:
+            next_restart += timedelta(days=1)
+
+        time_until_restart = (next_restart - current_time).total_seconds()
+
+        if time_until_restart < 0:
+            print("Calculated negative sleep time, skipping to next iteration.", flush=True)
+            continue
+
+        try:
+            time.sleep(time_until_restart)
+        except ValueError as e:
+            print(f"Error in sleep: {e}", flush=True)
+            continue
+
+        print("Restarting script at 00:00 MSK...", flush=True)
+        kill_chrome_driver_processes()
+        os.execv(sys.executable, ['python'] + sys.argv)
+
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--disable-gpu")
@@ -39,8 +68,6 @@ chrome_options.add_argument("--disable-notifications")
 chrome_options.add_argument("--disable-popup-blocking")
 chrome_options.add_argument("--mute-audio")
 
-chrome_service = ChromeService(port=4053)
-
 def load_cookies(driver, path):
     try:
         with open(path, 'rb') as cookiesfile:
@@ -51,11 +78,8 @@ def load_cookies(driver, path):
     except FileNotFoundError:
         print(f"File {path} not found, continuing without loading cookies.", flush=True)
 
-# Список файлов с куками - вписываете сами
 cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl']
-
-# Массив для лимитов поиска карт
-Cards_for_cookies = [21, 20, 20]
+Cards_for_cookies = [25, 23, 23]
 
 def check_for_card(driver, timeout):
     start_time = time.time()
@@ -92,40 +116,32 @@ def check_for_card(driver, timeout):
 def main():
     cookie_index = 0
     checks_per_cookie = {file: 0 for file in cookie_files}
-    moscow_tz = pytz.timezone('Europe/Moscow')
-    reset_time = datetime.now(moscow_tz).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    restart_thread = Thread(target=restart_at_midnight, daemon=True)
+    restart_thread.start()
 
     while True:
-        current_time = datetime.now(moscow_tz)
-        
-        if current_time >= reset_time:
-            print("Resetting check counts at 00:00 MSK", flush=True)
-            checks_per_cookie = {file: 0 for file in cookie_files}
-            reset_time = current_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-
         if checks_per_cookie[cookie_files[cookie_index]] >= Cards_for_cookies[cookie_index]:
             cookie_index = (cookie_index + 1) % len(cookie_files)
             if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
                 print("All cookie files have reached their limit. Waiting for reset...", flush=True)
-                time.sleep((reset_time - current_time).total_seconds())
+                time.sleep(60)
                 continue
 
         kill_chrome_driver_processes()
 
-        service = ChromeService(executable_path=r'chromedriver-win64\chromedriver.exe')
-        driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
-        driver.get("https://animestars.org/aniserials/video/drama/1108-korzinka-fruktov-final.html")
-
-        load_cookies(driver, cookie_files[cookie_index])
-
-        driver.refresh()
-
-        driver.execute_script("window.scrollBy(0, 1190);")
-        print("Scrolled page to player", flush=True)
-        # time.sleep(2)
-        # driver.save_screenshot("card_found_screenshot.png")
-
+        service = ChromeService(executable_path=r'/usr/local/bin/chromedriver')
+        driver = None
         try:
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.get("https://animestars.org/aniserials/video/josei/921-paradajz-kiss.html")
+
+            load_cookies(driver, cookie_files[cookie_index])
+
+            driver.refresh()
+
+            driver.execute_script("window.scrollBy(0, 1190);")
+            print("Scrolled page to player", flush=True)
 
             print("Waiting for iframe to be available...", flush=True)
             WebDriverWait(driver, 80).until(
@@ -147,8 +163,7 @@ def main():
                         driver.execute_script("arguments[0].click();", play_button)
                         print("Click performed on the Play button.", flush=True)
 
-                        # Ожидание появления карточки в течение 800 секунд
-                        card_found = check_for_card(driver, 800)
+                        card_found = check_for_card(driver, 1600)
 
                         if card_found:
                             checks_per_cookie[cookie_files[cookie_index]] += 1
@@ -179,8 +194,8 @@ def main():
             print("An error occurred:", str(e), flush=True)
 
         finally:
-            driver.quit()
-            service.stop()
+            if driver:
+                driver.quit()
             print("Restarting in 1 second.", flush=True)
 
         cookie_index = (cookie_index + 1) % len(cookie_files)
