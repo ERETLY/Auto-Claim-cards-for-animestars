@@ -116,6 +116,7 @@ def check_for_card(driver, timeout):
 def main():
     cookie_index = 0
     checks_per_cookie = {file: 0 for file in cookie_files}
+    all_cards_found = False  # Флаг для проверки, было ли уже выведено сообщение
 
     restart_thread = Thread(target=restart_at_midnight, daemon=True)
     restart_thread.start()
@@ -124,8 +125,12 @@ def main():
         if checks_per_cookie[cookie_files[cookie_index]] >= Cards_for_cookies[cookie_index]:
             cookie_index = (cookie_index + 1) % len(cookie_files)
             if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
-                time.sleep(60)
+                if not all_cards_found:  # Если сообщение ещё не было выведено
+                    print("All cookie files have reached their limit. Waiting for reset...", flush=True)
+                    all_cards_found = True  # Устанавливаем флаг, чтобы сообщение больше не печаталось
                 continue
+        else:
+            all_cards_found = False  # Сбрасываем флаг, если снова нужно проверять карты
 
         kill_chrome_driver_processes()
 
