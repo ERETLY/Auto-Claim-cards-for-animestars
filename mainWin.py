@@ -78,8 +78,8 @@ def load_cookies(driver, path):
     except FileNotFoundError:
         print(f"File {path} not found, continuing without loading cookies.", flush=True)
 
-cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl']
-Cards_for_cookies = [25, 23, 23]
+cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl', 'cookies3.pkl']
+Cards_for_cookies = [25, 23, 23, 23]
 
 def check_for_card(driver, timeout):
     start_time = time.time()
@@ -134,7 +134,10 @@ def main():
 
         kill_chrome_driver_processes()
 
-        service = ChromeService(executable_path=r"C:\Auto-Claim-cards-for-animestars\chromedriver-win64\chromedriver.exe")
+        import os
+from selenium.webdriver.chrome.service import Service as ChromeService
+
+        service = ChromeService(executable_path=os.path.join(os.path.dirname(__file__), 'chromedriver-win64', 'chromedriver.exe'))
         driver = None
         try:
             driver = webdriver.Chrome(service=service, options=chrome_options)
