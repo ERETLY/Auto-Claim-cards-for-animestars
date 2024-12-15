@@ -28,9 +28,11 @@ def restart_at_midnight():
     moscow_tz = pytz.timezone('Europe/Moscow')
     while True:
         current_time = datetime.now(moscow_tz)
+
         next_restart = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
         if next_restart <= current_time:
             next_restart += timedelta(days=1)
+
         time_until_restart = (next_restart - current_time).total_seconds()
 
         if time_until_restart < 0:
@@ -66,17 +68,15 @@ chrome_options.add_argument("--disable-notifications")
 chrome_options.add_argument("--disable-popup-blocking")
 chrome_options.add_argument("--mute-audio")
 
-def load_cookies(driver, path, loaded_files):
-    if path not in loaded_files:
-        try:
-            with open(path, 'rb') as cookiesfile:
-                cookies = pickle.load(cookiesfile)
-                for cookie in cookies:
-                    driver.add_cookie(cookie)
-            print(f"Cookies loaded from {path}.", flush=True)
-            loaded_files.add(path)
-        except FileNotFoundError:
-            print(f"File {path} not found, continuing without loading cookies.", flush=True)
+def load_cookies(driver, path):
+    try:
+        with open(path, 'rb') as cookiesfile:
+            cookies = pickle.load(cookiesfile)
+            for cookie in cookies:
+                driver.add_cookie(cookie)
+        print(f"Cookies loaded from {path}.", flush=True)
+    except FileNotFoundError:
+        print(f"File {path} not found, continuing without loading cookies.", flush=True)
 
 cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl']
 Cards_for_cookies = [25, 23, 23]
@@ -116,22 +116,15 @@ def check_for_card(driver, timeout):
 def main():
     cookie_index = 0
     checks_per_cookie = {file: 0 for file in cookie_files}
-    all_cookies_processed = False
-    loaded_files = set()
 
     restart_thread = Thread(target=restart_at_midnight, daemon=True)
     restart_thread.start()
 
     while True:
-        if all_cookies_processed:
-            time.sleep(60)
-            continue
-
         if checks_per_cookie[cookie_files[cookie_index]] >= Cards_for_cookies[cookie_index]:
             cookie_index = (cookie_index + 1) % len(cookie_files)
             if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
-                print("All cookie files have reached their limit. Waiting for reset...", flush=True)
-                all_cookies_processed = True
+                time.sleep(60)
                 continue
 
         kill_chrome_driver_processes()
@@ -142,7 +135,7 @@ def main():
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.get("https://animestars.org/aniserials/video/josei/921-paradajz-kiss.html")
 
-            load_cookies(driver, cookie_files[cookie_index], loaded_files)
+            load_cookies(driver, cookie_files[cookie_index])
 
             driver.refresh()
 
