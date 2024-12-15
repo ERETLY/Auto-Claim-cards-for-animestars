@@ -16,7 +16,6 @@ import pytz
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Функция для завершения процессов chromedriver и chrome
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'chromedriver' or 'chrome' in proc.info['name'].lower():
@@ -25,12 +24,10 @@ def kill_chrome_driver_processes():
             except psutil.NoSuchProcess:
                 pass
 
-# Функция для перезапуска скрипта в полночь
-def restart_at_midnight():
+def restart_at_two_am():
     moscow_tz = pytz.timezone('Europe/Moscow')
     while True:
         current_time = datetime.now(moscow_tz)
-
         next_restart = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
         if next_restart <= current_time:
             next_restart += timedelta(days=1)
@@ -47,11 +44,10 @@ def restart_at_midnight():
             print(f"Error in sleep: {e}", flush=True)
             continue
 
-        print("Restarting script at 00:00 MSK...", flush=True)
+        print("Performing full restart at 00:00 MSK...", flush=True)
         kill_chrome_driver_processes()
         os.execv(sys.executable, ['python'] + sys.argv)
 
-# Настройки Chrome
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--disable-gpu")
@@ -71,7 +67,6 @@ chrome_options.add_argument("--disable-notifications")
 chrome_options.add_argument("--disable-popup-blocking")
 chrome_options.add_argument("--mute-audio")
 
-# Функция загрузки cookies
 def load_cookies(driver, path):
     try:
         with open(path, 'rb') as cookiesfile:
@@ -85,7 +80,6 @@ def load_cookies(driver, path):
 cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl', 'cookies3.pkl']
 Cards_for_cookies = [25, 23, 23, 23]
 
-# Функция проверки наличия карты
 def check_for_card(driver, timeout):
     start_time = time.time()
     end_time = start_time + timeout
@@ -118,17 +112,12 @@ def check_for_card(driver, timeout):
         print(f"\033[91mCard not found within the time limit. Total time spent: {time_taken:.2f} seconds.\033[0m", flush=True)
     return card_found
 
-# Основная функция
 def main():
-    # Определяем путь к chromedriver относительно текущего файла
-    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver-win64', 'chromedriver.exe')
-
     cookie_index = 0
     checks_per_cookie = {file: 0 for file in cookie_files}
     all_cards_found = False
 
-    # Поток для перезапуска в полночь
-    restart_thread = Thread(target=restart_at_midnight, daemon=True)
+    restart_thread = Thread(target=restart_at_two_am, daemon=True)
     restart_thread.start()
 
     while True:
@@ -138,13 +127,16 @@ def main():
                 if not all_cards_found:
                     print("All cookie files have reached their limit. Waiting for reset...", flush=True)
                     all_cards_found = True
+                time.sleep(60)  # Wait for a minute before checking again
                 continue
         else:
             all_cards_found = False
 
         kill_chrome_driver_processes()
 
+        chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver-win64', 'chromedriver.exe')
         service = ChromeService(executable_path=chromedriver_path)
+
         driver = None
         try:
             driver = webdriver.Chrome(service=service, options=chrome_options)
