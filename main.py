@@ -24,11 +24,10 @@ def kill_chrome_driver_processes():
             except psutil.NoSuchProcess:
                 pass
 
-def restart_at_midnight():
+def restart_at_two_am():
     moscow_tz = pytz.timezone('Europe/Moscow')
     while True:
         current_time = datetime.now(moscow_tz)
-
         next_restart = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
         if next_restart <= current_time:
             next_restart += timedelta(days=1)
@@ -45,7 +44,7 @@ def restart_at_midnight():
             print(f"Error in sleep: {e}", flush=True)
             continue
 
-        print("Restarting script at 00:00 MSK...", flush=True)
+        print("Performing full restart at 00:00 MSK...", flush=True)
         kill_chrome_driver_processes()
         os.execv(sys.executable, ['python'] + sys.argv)
 
@@ -116,21 +115,22 @@ def check_for_card(driver, timeout):
 def main():
     cookie_index = 0
     checks_per_cookie = {file: 0 for file in cookie_files}
-    all_cards_found = False  # Флаг для проверки, было ли уже выведено сообщение
+    all_cards_found = False
 
-    restart_thread = Thread(target=restart_at_midnight, daemon=True)
+    restart_thread = Thread(target=restart_at_two_am, daemon=True)
     restart_thread.start()
 
     while True:
         if checks_per_cookie[cookie_files[cookie_index]] >= Cards_for_cookies[cookie_index]:
             cookie_index = (cookie_index + 1) % len(cookie_files)
             if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
-                if not all_cards_found:  # Если сообщение ещё не было выведено
+                if not all_cards_found:
                     print("All cookie files have reached their limit. Waiting for reset...", flush=True)
-                    all_cards_found = True  # Устанавливаем флаг, чтобы сообщение больше не печаталось
+                    all_cards_found = True
+                time.sleep(60)  # Wait for a minute before checking again
                 continue
         else:
-            all_cards_found = False  # Сбрасываем флаг, если снова нужно проверять карты
+            all_cards_found = False
 
         kill_chrome_driver_processes()
 
