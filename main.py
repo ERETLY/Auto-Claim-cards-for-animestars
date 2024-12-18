@@ -1,6 +1,6 @@
 import sys
-import pickle
 import io
+import pickle
 import time
 import os
 from datetime import datetime, timedelta
@@ -13,8 +13,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import psutil
 import pytz
+import locale
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
@@ -24,27 +26,19 @@ def kill_chrome_driver_processes():
             except psutil.NoSuchProcess:
                 pass
 
-def restart_at_two_am():
+def restart_at_midnight():
     moscow_tz = pytz.timezone('Europe/Moscow')
     while True:
         current_time = datetime.now(moscow_tz)
-        next_restart = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        next_restart = current_time.replace(hour=23, minute=59, second=50, microsecond=0)
         if next_restart <= current_time:
             next_restart += timedelta(days=1)
 
         time_until_restart = (next_restart - current_time).total_seconds()
 
-        if time_until_restart < 0:
-            print("Calculated negative sleep time, skipping to next iteration.", flush=True)
-            continue
+        time.sleep(time_until_restart)
 
-        try:
-            time.sleep(time_until_restart)
-        except ValueError as e:
-            print(f"Error in sleep: {e}", flush=True)
-            continue
-
-        print("Performing full restart at 00:00 MSK...", flush=True)
+        print("Выполняется полный перезапуск в 00:00 МСК...", flush=True)
         kill_chrome_driver_processes()
         os.execv(sys.executable, ['python'] + sys.argv)
 
@@ -73,9 +67,9 @@ def load_cookies(driver, path):
             cookies = pickle.load(cookiesfile)
             for cookie in cookies:
                 driver.add_cookie(cookie)
-        print(f"Cookies loaded from {path}.", flush=True)
+        print(f"Куки загружены из {path}.", flush=True)
     except FileNotFoundError:
-        print(f"File {path} not found, continuing without loading cookies.", flush=True)
+        print(f"Файл {path} не найден, продолжаем без загрузки куков.", flush=True)
 
 cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl']
 Cards_for_cookies = [25, 23, 23]
@@ -86,7 +80,7 @@ def check_for_card(driver, timeout):
     card_found = False
 
     while time.time() < end_time:
-        print("Checking for card...", flush=True)
+        print("Проверка наличия карты...", flush=True)
         try:
             driver.switch_to.default_content()
             time.sleep(2)
@@ -94,22 +88,22 @@ def check_for_card(driver, timeout):
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'div.card-notification[data-card-name]'))
             )
             time_taken = time.time() - start_time
-            print(f"\033[92mCard found! Time taken: {time_taken:.2f} seconds.\033[0m", flush=True)
+            print(f"\033[92mКарта найдена! Затраченное время: {time_taken:.2f} секунд.\033[0m", flush=True)
             card_found = True
 
             time.sleep(5)
             driver.execute_script("arguments[0].click();", card_div)
-            print(f"\033[92mCard clicked.\033[0m", flush=True)
+            print(f"\033[92mКарта кликнута.\033[0m", flush=True)
 
             break
 
         except Exception as e:
-            print("Card not found or not yet available, retrying...", flush=True)
+            print("Карта не найдена или еще не доступна, повторная попытка...", flush=True)
             time.sleep(10)
 
     if not card_found:
         time_taken = time.time() - start_time
-        print(f"\033[91mCard not found within the time limit. Total time spent: {time_taken:.2f} seconds.\033[0m", flush=True)
+        print(f"\033[91mКарта не найдена в течение заданного времени. Общее затраченное время: {time_taken:.2f} секунд.\033[0m", flush=True)
     return card_found
 
 def main():
@@ -117,7 +111,7 @@ def main():
     checks_per_cookie = {file: 0 for file in cookie_files}
     all_cards_found = False
 
-    restart_thread = Thread(target=restart_at_two_am, daemon=True)
+    restart_thread = Thread(target=restart_at_midnight, daemon=True)
     restart_thread.start()
 
     while True:
@@ -125,9 +119,9 @@ def main():
             cookie_index = (cookie_index + 1) % len(cookie_files)
             if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
                 if not all_cards_found:
-                    print("All cookie files have reached their limit. Waiting for reset...", flush=True)
+                    print("Все файлы куков достигли своего лимита. Ожидание сброса...", flush=True)
                     all_cards_found = True
-                time.sleep(60)  # Wait for a minute before checking again
+                time.sleep(60)
                 continue
         else:
             all_cards_found = False
@@ -145,13 +139,13 @@ def main():
             driver.refresh()
 
             driver.execute_script("window.scrollBy(0, 1190);")
-            print("Scrolled page to player", flush=True)
+            print("Страница прокручена до плеера", flush=True)
 
-            print("Waiting for iframe to be available...", flush=True)
+            print("Ожидание доступности iframe...", flush=True)
             WebDriverWait(driver, 80).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, 'iframe[src*="kodik.info"]'))
             )
-            print("Switched to iframe.", flush=True)
+            print("Переключено на iframe.", flush=True)
 
             play_button_visible = True
 
@@ -160,47 +154,47 @@ def main():
                     play_button = WebDriverWait(driver, 30).until(
                         EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div[4]/a'))
                     )
-                    print("Play button found.", flush=True)
+                    print("Кнопка воспроизведения найдена.", flush=True)
 
                     if driver.execute_script("return arguments[0].offsetParent !== null;", play_button):
                         time.sleep(1)
                         driver.execute_script("arguments[0].click();", play_button)
-                        print("Click performed on the Play button.", flush=True)
+                        print("Выполнен клик по кнопке воспроизведения.", flush=True)
 
                         card_found = check_for_card(driver, 1600)
 
                         if card_found:
                             checks_per_cookie[cookie_files[cookie_index]] += 1
-                            print(f"Cards found for {cookie_files[cookie_index]}: {checks_per_cookie[cookie_files[cookie_index]]}/{Cards_for_cookies[cookie_index]}", flush=True)
+                            print(f"Карты найдены для {cookie_files[cookie_index]}: {checks_per_cookie[cookie_files[cookie_index]]}/{Cards_for_cookies[cookie_index]}", flush=True)
                         else:
-                            print(f"No card found for {cookie_files[cookie_index]}. Counter not incremented.", flush=True)
+                            print(f"Карта не найдена для {cookie_files[cookie_index]}. Счетчик не увеличен.", flush=True)
 
-                        print("Reloading page...", flush=True)
+                        print("Перезагрузка страницы...", flush=True)
                         driver.refresh()
-                        print("Page reloaded successfully.", flush=True)
+                        print("Страница успешно перезагружена.", flush=True)
                         time.sleep(10)
                         break
 
                     else:
                         play_button_visible = False
-                        print("Play button is no longer visible. Stopping clicks.", flush=True)
+                        print("Кнопка воспроизведения больше не видна. Остановка кликов.", flush=True)
 
                 except Exception as e:
                     if "stale element reference" in str(e):
-                        print("Stale element reference. Play button may have changed or been removed.", flush=True)
+                        print("Устаревшая ссылка на элемент. Кнопка воспроизведения могла измениться или быть удалена.", flush=True)
                     elif "no such element" in str(e):
-                        print("Play button not found. Waiting for the next iteration.", flush=True)
+                        print("Кнопка воспроизведения не найдена. Ожидание следующей итерации.", flush=True)
                     else:
-                        print("An error occurred while trying to find/click the button:", str(e), flush=True)
+                        print("Произошла ошибка при попытке найти/кликнуть кнопку:", str(e), flush=True)
                     play_button_visible = False
 
         except Exception as e:
-            print("An error occurred:", str(e), flush=True)
+            print("Произошла ошибка:", str(e), flush=True)
 
         finally:
             if driver:
                 driver.quit()
-            print("Restarting in 1 second.", flush=True)
+            print("Перезапуск через 1 секунду.", flush=True)
 
         cookie_index = (cookie_index + 1) % len(cookie_files)
 
