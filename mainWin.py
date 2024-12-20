@@ -1,6 +1,5 @@
 import sys
 import io
-import pickle
 import time
 import os
 from datetime import datetime, timedelta
@@ -13,11 +12,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import psutil
 import pytz
-import locale
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
-
+    
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'chromedriver' or 'chrome' in proc.info['name'].lower():
@@ -61,18 +59,77 @@ chrome_options.add_argument("--disable-notifications")
 chrome_options.add_argument("--disable-popup-blocking")
 chrome_options.add_argument("--mute-audio")
 
-def load_cookies(driver, path):
-    try:
-        with open(path, 'rb') as cookiesfile:
-            cookies = pickle.load(cookiesfile)
-            for cookie in cookies:
-                driver.add_cookie(cookie)
-        print(f"Куки загружены из {path}.", flush=True)
-    except FileNotFoundError:
-        print(f"Файл {path} не найден, продолжаем без загрузки куков.", flush=True)
+accounts = [
+    {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+]
 
-cookie_files = ['cookies.pkl', 'cookies1.pkl', 'cookies2.pkl', 'cookies3.pkl']
-Cards_for_cookies = [25, 23, 23, 23]
+def login(driver, username, password):
+    try:
+        driver.get("https://animestars.org")
+        print(f"Попытка входа для пользователя {username}...", flush=True)
+        
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+        
+        try:
+            login_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "div.header__btn.btn.js-show-login"))
+            )
+            driver.execute_script("arguments[0].click();", login_button)
+            print("Кнопка входа нажата.", flush=True)
+        except Exception as e:
+            print(f"Ошибка при нажатии кнопки входа: {str(e)}", flush=True)
+            return False
+        
+        try:
+            username_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//input[@name='login_name']"))
+            )
+            username_field.clear()
+            username_field.send_keys(username)
+            print("Логин введен.", flush=True)
+            
+            password_field = driver.find_element(By.XPATH, "//input[@name='login_password']")
+            password_field.clear()
+            password_field.send_keys(password)
+            print("Пароль введен.", flush=True)
+        except Exception as e:
+            print(f"Ошибка при вводе учетных данных: {str(e)}", flush=True)
+            return False
+        
+        try:
+            submit_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[@onclick='submit();']"))
+            )
+            driver.execute_script("arguments[0].click();", submit_button)
+            print("Кнопка отправки формы нажата.", flush=True)
+        except Exception as e:
+            print(f"Ошибка при отправке формы: {str(e)}", flush=True)
+            return False
+        
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".user-menu"))
+            )
+            print(f"Успешный вход в систему для пользователя {username}.", flush=True)
+            return True
+        except Exception as e:
+            print(f"Ошибка при проверке успешного входа: {str(e)}", flush=True)
+            return False
+        
+    except Exception as e:
+        print(f"Неожиданная ошибка при входе в систему для пользователя {username}: {str(e)}", flush=True)
+        return False
+
+def is_logged_in(driver):
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".user-menu"))
+        )
+        return True
+    except:
+        return False
 
 def check_for_card(driver, timeout):
     start_time = time.time()
@@ -107,19 +164,20 @@ def check_for_card(driver, timeout):
     return card_found
 
 def main():
-    cookie_index = 0
-    checks_per_cookie = {file: 0 for file in cookie_files}
+    account_index = 0
+    checks_per_account = {account["username"]: 0 for account in accounts}
     all_cards_found = False
 
     restart_thread = Thread(target=restart_at_midnight, daemon=True)
     restart_thread.start()
 
     while True:
-        if checks_per_cookie[cookie_files[cookie_index]] >= Cards_for_cookies[cookie_index]:
-            cookie_index = (cookie_index + 1) % len(cookie_files)
-            if all(checks >= Cards_for_cookies[i] for i, checks in enumerate(checks_per_cookie.values())):
+        current_account = accounts[account_index]
+        if checks_per_account[current_account["username"]] >= current_account["cards"]:
+            account_index = (account_index + 1) % len(accounts)
+            if all(checks >= account["cards"] for account, checks in zip(accounts, checks_per_account.values())):
                 if not all_cards_found:
-                    print("Все файлы куков достигли своего лимита. Ожидание сброса...", flush=True)
+                    print("Все аккаунты достигли своего лимита. Ожидание сброса...", flush=True)
                     all_cards_found = True
                 time.sleep(60)
                 continue
@@ -134,11 +192,16 @@ def main():
         driver = None
         try:
             driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            driver.get("https://animestars.org")
+            if not is_logged_in(driver):
+                if not login(driver, current_account["username"], current_account["password"]):
+                    print(f"Не удалось войти в систему для аккаунта {current_account['username']}. Пропуск текущей итерации.", flush=True)
+                    continue
+            else:
+                print(f"Уже выполнен вход для аккаунта {current_account['username']}.", flush=True)
+
             driver.get("https://animestars.org/aniserials/video/josei/921-paradajz-kiss.html")
-
-            load_cookies(driver, cookie_files[cookie_index])
-
-            driver.refresh()
 
             driver.execute_script("window.scrollBy(0, 1190);")
             print("Страница прокручена до плеера", flush=True)
@@ -166,10 +229,10 @@ def main():
                         card_found = check_for_card(driver, 1600)
 
                         if card_found:
-                            checks_per_cookie[cookie_files[cookie_index]] += 1
-                            print(f"Карты найдены для {cookie_files[cookie_index]}: {checks_per_cookie[cookie_files[cookie_index]]}/{Cards_for_cookies[cookie_index]}", flush=True)
+                            checks_per_account[current_account["username"]] += 1
+                            print(f"Карты найдены для {current_account['username']}: {checks_per_account[current_account['username']]}/{current_account['cards']}", flush=True)
                         else:
-                            print(f"Карта не найдена для {cookie_files[cookie_index]}. Счетчик не увеличен.", flush=True)
+                            print(f"Карта не найдена для {current_account['username']}. Счетчик не увеличен.", flush=True)
 
                         print("Перезагрузка страницы...", flush=True)
                         driver.refresh()
@@ -196,11 +259,10 @@ def main():
         finally:
             if driver:
                 driver.quit()
-            print("Перезапуск через 1 секунду.", flush=True)
+            print("Перезапуск через 5 секунд.", flush=True)
+            time.sleep(5)
 
-        cookie_index = (cookie_index + 1) % len(cookie_files)
-
-        time.sleep(1)
+        account_index = (account_index + 1) % len(accounts)
 
 if __name__ == "__main__":
     main()
