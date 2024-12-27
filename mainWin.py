@@ -15,6 +15,12 @@ import pytz
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
+
+def create_screenshot_directory():
+    directory = "failed_attempts_screenshots"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    return directory
     
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
@@ -24,7 +30,7 @@ def kill_chrome_driver_processes():
             except psutil.NoSuchProcess:
                 pass
 
-def restart_at_midnight():
+def restart_at_midnight(reset_function):
     moscow_tz = pytz.timezone('Europe/Moscow')
     while True:
         current_time = datetime.now(moscow_tz)
@@ -37,8 +43,9 @@ def restart_at_midnight():
         time.sleep(time_until_restart)
 
         print("Выполняется полный перезапуск в 00:00 МСК...", flush=True)
+        reset_function()
         kill_chrome_driver_processes()
-        os.execv(sys.executable, ['python'] + sys.argv)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
@@ -97,7 +104,7 @@ def login(driver, username, password):
         except Exception as e:
             print(f"Ошибка при вводе учетных данных: {str(e)}", flush=True)
             return False
-        
+
         try:
             submit_button = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[@onclick='submit();']"))
@@ -107,16 +114,10 @@ def login(driver, username, password):
         except Exception as e:
             print(f"Ошибка при отправке формы: {str(e)}", flush=True)
             return False
-        
-        try:
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".user-menu"))
-            )
-            print(f"Успешный вход в систему для пользователя {username}.", flush=True)
-            return True
-        except Exception as e:
-            print(f"Ошибка при проверке успешного входа: {str(e)}", flush=True)
-            return False
+
+        driver.refresh()
+        print("Страница обновлена после отправки формы.", flush=True)
+        return True
         
     except Exception as e:
         print(f"Неожиданная ошибка при входе в систему для пользователя {username}: {str(e)}", flush=True)
@@ -161,28 +162,46 @@ def check_for_card(driver, timeout):
     if not card_found:
         time_taken = time.time() - start_time
         print(f"\033[91mКарта не найдена в течение заданного времени. Общее затраченное время: {time_taken:.2f} секунд.\033[0m", flush=True)
+        
+        screenshot_dir = create_screenshot_directory()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = os.path.join(screenshot_dir, f"failed_attempt_{timestamp}.png")
+        try:
+            driver.save_screenshot(screenshot_path)
+            print(f"Скриншот сохранен: {screenshot_path}", flush=True)
+        except Exception as e:
+            print(f"Ошибка при сохранении скриншота: {str(e)}", flush=True)
+
     return card_found
 
 def main():
     account_index = 0
     checks_per_account = {account["username"]: 0 for account in accounts}
+    active_accounts = list(range(len(accounts)))
     all_cards_found = False
 
-    restart_thread = Thread(target=restart_at_midnight, daemon=True)
+    def reset_accounts():
+        nonlocal checks_per_account, active_accounts, account_index, all_cards_found
+        print("Перезапуск: Сброс счетчиков и восстановление активных аккаунтов.", flush=True)
+        checks_per_account = {account["username"]: 0 for account in accounts}
+        active_accounts = list(range(len(accounts)))
+        account_index = 0
+        all_cards_found = False
+
+    restart_thread = Thread(target=restart_at_midnight, args=(reset_accounts,), daemon=True)
     restart_thread.start()
 
     while True:
-        current_account = accounts[account_index]
-        if checks_per_account[current_account["username"]] >= current_account["cards"]:
-            account_index = (account_index + 1) % len(accounts)
-            if all(checks >= account["cards"] for account, checks in zip(accounts, checks_per_account.values())):
-                if not all_cards_found:
-                    print("Все аккаунты достигли своего лимита. Ожидание сброса...", flush=True)
-                    all_cards_found = True
-                time.sleep(60)
-                continue
-        else:
-            all_cards_found = False
+        if not active_accounts and not all_cards_found:
+            print("Все аккаунты достигли своего лимита. Ожидание перезапуска в 00:00 МСК.", flush=True)
+            all_cards_found = True
+
+        if not active_accounts:
+            time.sleep(60)
+            continue
+
+        current_account_index = active_accounts[account_index % len(active_accounts)]
+        current_account = accounts[current_account_index]
 
         kill_chrome_driver_processes()
 
@@ -197,6 +216,7 @@ def main():
             if not is_logged_in(driver):
                 if not login(driver, current_account["username"], current_account["password"]):
                     print(f"Не удалось войти в систему для аккаунта {current_account['username']}. Пропуск текущей итерации.", flush=True)
+                    account_index += 1
                     continue
             else:
                 print(f"Уже выполнен вход для аккаунта {current_account['username']}.", flush=True)
@@ -231,6 +251,16 @@ def main():
                         if card_found:
                             checks_per_account[current_account["username"]] += 1
                             print(f"Карты найдены для {current_account['username']}: {checks_per_account[current_account['username']]}/{current_account['cards']}", flush=True)
+                            
+                            if checks_per_account[current_account["username"]] >= current_account["cards"]:
+                                print(f"Аккаунт {current_account['username']} достиг лимита карт. Удаление из активных аккаунтов.", flush=True)
+                                active_accounts.remove(current_account_index)
+
+                            account_index += 1
+                            if active_accounts:
+                                next_account = accounts[active_accounts[account_index % len(active_accounts)]]
+                                print(f"Переключение на аккаунт: {next_account['username']}", flush=True)
+                            break
                         else:
                             print(f"Карта не найдена для {current_account['username']}. Счетчик не увеличен.", flush=True)
 
@@ -261,8 +291,6 @@ def main():
                 driver.quit()
             print("Перезапуск через 5 секунд.", flush=True)
             time.sleep(5)
-
-        account_index = (account_index + 1) % len(accounts)
 
 if __name__ == "__main__":
     main()
