@@ -4,6 +4,7 @@ import time
 import os
 from datetime import datetime, timedelta
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -16,12 +17,57 @@ import pytz
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
+# Можете поменять колво
+PROXY_CONFIGS = [
+    {
+        "host": "ip",
+        "port": "port",
+        "username": "user",
+        "password": "pass"
+    },
+    {
+        "host": "ip",
+        "port": "port",
+        "username": "user",
+        "password": "pass"
+    },
+    {
+        "host": "ip",
+        "port": "port",
+        "username": "user",
+        "password": "pass"
+    },
+    {
+        "host": "ip",
+        "port": "port",
+        "username": "user",
+        "password": "pass"
+    },
+]
+
+# Можете убрать прокси2 прокси3 и тд, также можно добавлять к прокси еще аккаунты
+ACCOUNTS = {
+    "proxy1": [
+        {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+        {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+    ],
+    "proxy2": [
+        {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+    ],
+    "proxy3": [
+        {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+    ],
+    "proxy4": [
+        {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
+    ]
+}
+
 def create_screenshot_directory():
     directory = "failed_attempts_screenshots"
     if not os.path.exists(directory):
         os.makedirs(directory)
     return directory
-    
+
 def kill_chrome_driver_processes():
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'chromedriver' or 'chrome' in proc.info['name'].lower():
@@ -30,45 +76,82 @@ def kill_chrome_driver_processes():
             except psutil.NoSuchProcess:
                 pass
 
-def restart_at_midnight(reset_function):
-    moscow_tz = pytz.timezone('Europe/Moscow')
-    while True:
-        current_time = datetime.now(moscow_tz)
-        next_restart = current_time.replace(hour=23, minute=59, second=50, microsecond=0)
-        if next_restart <= current_time:
-            next_restart += timedelta(days=1)
+def create_proxy_extension(proxy_config):
+    manifest_json = """
+    {
+        "version": "1.0.0",
+        "manifest_version": 2,
+        "name": "Chrome Proxy",
+        "permissions": [
+            "proxy",
+            "tabs",
+            "unlimitedStorage",
+            "storage",
+            "<all_urls>",
+            "webRequest",
+            "webRequestBlocking"
+        ],
+        "background": {
+            "scripts": ["background.js"]
+        },
+        "minimum_chrome_version":"22.0.0"
+    }
+    """
 
-        time_until_restart = (next_restart - current_time).total_seconds()
+    background_js = """
+    var config = {
+            mode: "fixed_servers",
+            rules: {
+                singleProxy: {
+                    scheme: "http",
+                    host: "%s",
+                    port: parseInt(%s)
+                },
+                bypassList: ["localhost"]
+            }
+        };
 
-        time.sleep(time_until_restart)
+    chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
 
-        print("Выполняется полный перезапуск в 00:00 МСК...", flush=True)
-        reset_function()
-        kill_chrome_driver_processes()
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+    function callbackFn(details) {
+        return {
+            authCredentials: {
+                username: "%s",
+                password: "%s"
+            }
+        };
+    }
 
-chrome_options = Options()
-chrome_options.add_argument("--headless=new")
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("--window-size=1920,1080")
-chrome_options.add_argument("--autoplay-policy=no-user-gesture-required")
-chrome_options.add_argument("--enable-webgl")
-chrome_options.add_argument("--use-gl=swiftshader")
-chrome_options.add_argument("--enable-webgl2-compute-context")
-chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36")
-chrome_options.add_argument("--ignore-gpu-blacklist")
-chrome_options.add_argument("--disable-software-rasterizer")
-chrome_options.add_argument("--disable-web-security")
-chrome_options.add_argument("--allow-running-insecure-content")
-chrome_options.add_argument("--disable-notifications")
-chrome_options.add_argument("--disable-popup-blocking")
-chrome_options.add_argument("--mute-audio")
+    chrome.webRequest.onAuthRequired.addListener(
+                callbackFn,
+                {urls: ["<all_urls>"]},
+                ['blocking']
+    );
+    """ % (proxy_config["host"], proxy_config["port"], 
+           proxy_config["username"], proxy_config["password"])
 
-accounts = [
-    {"username": "ВАШ_ЛОГИН", "password": "ВАШ_ПАРОЛЬ", "cards": 25},
-]
+    path = os.path.dirname(os.path.abspath(__file__))
+    proxy_extension_path = os.path.join(path, f'proxy_auth_extension_{proxy_config["host"]}')
+    
+    if not os.path.exists(proxy_extension_path):
+        os.makedirs(proxy_extension_path)
+    
+    with open(os.path.join(proxy_extension_path, "manifest.json"), 'w') as f:
+        f.write(manifest_json)
+    
+    with open(os.path.join(proxy_extension_path, "background.js"), 'w') as f:
+        f.write(background_js)
+    
+    return proxy_extension_path
+
+def is_logged_in(driver):
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".user-menu"))
+        )
+        return True
+    except:
+        return False
 
 def login(driver, username, password):
     try:
@@ -123,14 +206,6 @@ def login(driver, username, password):
         print(f"Неожиданная ошибка при входе в систему для пользователя {username}: {str(e)}", flush=True)
         return False
 
-def is_logged_in(driver):
-    try:
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".user-menu"))
-        )
-        return True
-    except:
-        return False
 
 def check_for_card(driver, timeout):
     start_time = time.time()
@@ -152,7 +227,6 @@ def check_for_card(driver, timeout):
             time.sleep(5)
             driver.execute_script("arguments[0].click();", card_div)
             print(f"\033[92mКарта кликнута.\033[0m", flush=True)
-
             break
 
         except Exception as e:
@@ -174,123 +248,173 @@ def check_for_card(driver, timeout):
 
     return card_found
 
-def main():
-    account_index = 0
-    checks_per_account = {account["username"]: 0 for account in accounts}
-    active_accounts = list(range(len(accounts)))
-    all_cards_found = False
+class AccountManager:
+    def __init__(self, proxy_config, accounts):
+        self.proxy_config = proxy_config
+        self.accounts = accounts
+        self.current_index = 0
+        self.active_accounts = list(range(len(accounts)))
+        self.checks_per_account = {account["username"]: 0 for account in accounts}
 
-    def reset_accounts():
-        nonlocal checks_per_account, active_accounts, account_index, all_cards_found
-        print("Перезапуск: Сброс счетчиков и восстановление активных аккаунтов.", flush=True)
-        checks_per_account = {account["username"]: 0 for account in accounts}
-        active_accounts = list(range(len(accounts)))
-        account_index = 0
-        all_cards_found = False
+    def get_next_account(self):
+        if not self.active_accounts:
+            return None
+        
+        account_index = self.active_accounts[self.current_index % len(self.active_accounts)]
+        self.current_index += 1
+        return self.accounts[account_index]
 
-    restart_thread = Thread(target=restart_at_midnight, args=(reset_accounts,), daemon=True)
-    restart_thread.start()
+    def update_account_status(self, username, cards_found):
+        self.checks_per_account[username] += cards_found
+        if self.checks_per_account[username] >= next(account["cards"] 
+            for account in self.accounts if account["username"] == username):
+            self.active_accounts = [i for i in self.active_accounts 
+                if self.accounts[i]["username"] != username]
+            return True
+        return False
+
+def restart_at_midnight(account_managers):
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    while True:
+        current_time = datetime.now(moscow_tz)
+        next_restart = current_time.replace(hour=23, minute=59, second=50, microsecond=0)
+        if next_restart <= current_time:
+            next_restart += timedelta(days=1)
+
+        time_until_restart = (next_restart - current_time).total_seconds()
+        time.sleep(time_until_restart)
+
+        print("Выполняется полный перезапуск в 00:00 МСК...", flush=True)
+        kill_chrome_driver_processes()
+        for manager in account_managers:
+            manager.current_index = 0
+            manager.active_accounts = list(range(len(manager.accounts)))
+            manager.checks_per_account = {account["username"]: 0 for account in manager.accounts}
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+def process_account_group(account_manager):
+    chrome_options = Options()
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--autoplay-policy=no-user-gesture-required")
+    chrome_options.add_argument("--enable-webgl")
+    chrome_options.add_argument("--use-gl=swiftshader")
+    chrome_options.add_argument("--enable-webgl2-compute-context")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36")
+    chrome_options.add_argument("--ignore-gpu-blacklist")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--allow-running-insecure-content")
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--disable-popup-blocking")
+    chrome_options.add_argument("--mute-audio")
+    chrome_options.add_argument("--headless=new")
+
+    chrome_options.add_argument("--disable-webrtc")
+    chrome_options.add_argument("--disable-logging")
+    chrome_options.add_argument("--disable-logging-redirect")
+    chrome_options.add_argument("--log-level=3")
+    chrome_options.add_argument("--silent")
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    chrome_options.add_experimental_option("prefs", {
+        "webrtc.ip_handling_policy": "disable_non_proxied_udp",
+        "webrtc.multiple_routes_enabled": False,
+        "webrtc.nonproxied_udp_enabled": False
+    })
+
+    proxy_extension_path = create_proxy_extension(account_manager.proxy_config)
+    chrome_options.add_argument(f'--load-extension={proxy_extension_path}')
 
     while True:
-        if not active_accounts and not all_cards_found:
-            print("Все аккаунты достигли своего лимита. Ожидание перезапуска в 00:00 МСК.", flush=True)
-            all_cards_found = True
+        account = account_manager.get_next_account()
+        if not account:
+            print(f"Акки хуяки наверное умерли {account_manager.proxy_config['host']}", flush=True)
+            break
 
-        if not active_accounts:
-            time.sleep(60)
-            continue
-
-        current_account_index = active_accounts[account_index % len(active_accounts)]
-        current_account = accounts[current_account_index]
-
-        kill_chrome_driver_processes()
-
-        chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver-win64', 'chromedriver.exe')
-        service = ChromeService(executable_path=chromedriver_path)
-        
         driver = None
         try:
+            chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver-win64', 'chromedriver.exe')
+            service = ChromeService(executable_path=chromedriver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            driver.get("https://animestars.org")
-            if not is_logged_in(driver):
-                if not login(driver, current_account["username"], current_account["password"]):
-                    print(f"Не удалось войти в систему для аккаунта {current_account['username']}. Пропуск текущей итерации.", flush=True)
-                    account_index += 1
-                    continue
-            else:
-                print(f"Уже выполнен вход для аккаунта {current_account['username']}.", flush=True)
+            if not login(driver, account["username"], account["password"]):
+                print(f"Ошибка входа в аккаунт {account['username']}. Пропускаем.", flush=True)
+                continue
 
-            driver.get("https://animestars.org/aniserials/video/josei/921-paradajz-kiss.html")
-
+            driver.get("https://animestars.org/aniserials/video/drama/749-korzinka-fruktov-2-sezon.html")
             driver.execute_script("window.scrollBy(0, 1190);")
-            print("Страница прокручена до плеера", flush=True)
-
-            print("Ожидание доступности iframe...", flush=True)
+            
             WebDriverWait(driver, 80).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, 'iframe[src*="kodik.info"]'))
             )
-            print("Переключено на iframe.", flush=True)
 
             play_button_visible = True
-
             while play_button_visible:
                 try:
                     play_button = WebDriverWait(driver, 30).until(
                         EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div[4]/a'))
                     )
-                    print("Кнопка воспроизведения найдена.", flush=True)
 
                     if driver.execute_script("return arguments[0].offsetParent !== null;", play_button):
                         time.sleep(1)
                         driver.execute_script("arguments[0].click();", play_button)
-                        print("Выполнен клик по кнопке воспроизведения.", flush=True)
-
+                        
                         card_found = check_for_card(driver, 1600)
-
                         if card_found:
-                            checks_per_account[current_account["username"]] += 1
-                            print(f"Карты найдены для {current_account['username']}: {checks_per_account[current_account['username']]}/{current_account['cards']}", flush=True)
-                            
-                            if checks_per_account[current_account["username"]] >= current_account["cards"]:
-                                print(f"Аккаунт {current_account['username']} достиг лимита карт. Удаление из активных аккаунтов.", flush=True)
-                                active_accounts.remove(current_account_index)
+                            if account_manager.update_account_status(account["username"], 1):
+                                print(f"Аккаунт {account['username']} достиг лимита карт", flush=True)
+                                break
+                            print(f"Карта не найдена для {account['username']}", flush=True)
 
-                            account_index += 1
-                            if active_accounts:
-                                next_account = accounts[active_accounts[account_index % len(active_accounts)]]
-                                print(f"Переключение на аккаунт: {next_account['username']}", flush=True)
-                            break
-                        else:
-                            print(f"Карта не найдена для {current_account['username']}. Счетчик не увеличен.", flush=True)
-
-                        print("Перезагрузка страницы...", flush=True)
                         driver.refresh()
-                        print("Страница успешно перезагружена.", flush=True)
                         time.sleep(10)
                         break
-
                     else:
                         play_button_visible = False
-                        print("Кнопка воспроизведения больше не видна. Остановка кликов.", flush=True)
+                        print("Кнопка воспроизведения больше не видна. Не кликаем.", flush=True)
 
                 except Exception as e:
-                    if "stale element reference" in str(e):
-                        print("Устаревшая ссылка на элемент. Кнопка воспроизведения могла измениться или быть удалена.", flush=True)
+                    if "Все плохо, пишите разрабу." in str(e):
+                        print("кнопка пропала.", flush=True)
                     elif "no such element" in str(e):
-                        print("Кнопка воспроизведения не найдена. Ожидание следующей итерации.", flush=True)
+                        print("Кнопка не найдена.", flush=True)
                     else:
-                        print("Произошла ошибка при попытке найти/кликнуть кнопку:", str(e), flush=True)
+                        print(f"Ошибка обработки кнопки: {str(e)}", flush=True)
                     play_button_visible = False
 
         except Exception as e:
-            print("Произошла ошибка:", str(e), flush=True)
-
+            print(f"Ошибка с аккаунтом {account['username']}: {str(e)}", flush=True)
         finally:
             if driver:
                 driver.quit()
-            print("Перезапуск через 5 секунд.", flush=True)
             time.sleep(5)
 
+def main():
+    account_managers = []
+    for i, proxy_config in enumerate(PROXY_CONFIGS):
+        proxy_accounts = ACCOUNTS[f"proxy{i+1}"]
+        account_managers.append(AccountManager(proxy_config, proxy_accounts))
+    
+    restart_thread = Thread(target=restart_at_midnight, args=(account_managers,), daemon=True)
+    restart_thread.start()
+    
+    print("Начинаем вход в группы аккаунтов с прокси", flush=True)
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(process_account_group, account_managers)
+
+    print("Все группы аккаунтов завершили обработку.", flush=True)
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nCкрипт прекращен пользователем.", flush=True)
+        kill_chrome_driver_processes()
+        sys.exit(0)
+    except Exception as e:
+        print(f"Неожиданная ошибка: {str(e)}", flush=True)
+        kill_chrome_driver_processes()
+        sys.exit(1)
