@@ -279,10 +279,10 @@ def main():
     
     print("Начинаем обработку аккаунтов", flush=True)
     
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         while True:
             accounts_to_process = []
-            for _ in range(2):
+            for _ in range(4):
                 account = account_manager.get_next_account()
                 if account:
                     accounts_to_process.append(account)
